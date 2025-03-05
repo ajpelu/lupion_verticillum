@@ -1,0 +1,150 @@
+---
+title: "get_canopy_lidar"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+## Introduction 
+
+### Preprocessing LIDAR data 
+```{r}
+library(tidyverse)
+library(lidR)
+library(sf)
+library(smoothr) # to remove holes 
+```
+
+- Get an Area of Interest (AOI) as the extent of the localion of selected trees (buffered by 30 m). I used convex_hull and then buffered it by 15 m. 
+
+```{r aoi}
+tree <- st_read("raw_data/geoinfo/individuos_25830.shp") |> st_transform(32630) |> 
+    mutate(x = st_coordinates(geometry)[,1],
+         y = st_coordinates(geometry)[,2]) 
+
+generaaoi <- function(x, dist=12){
+  out <- x |> 
+    st_union() |> 
+    st_convex_hull() |> 
+    st_buffer(dist = dist, joinStyle = "MITRE", mitreLimit = 2)
+  return(out)
+}
+
+aoi <- tree |> generaaoi()
+```
+
+- Preprocessing LIDAR data to get canopy height and canopy cover. 
+
+```{r clip-lidar}
+#| eval: false
+# raw_las <- lidR::readLAS("/Volumes/VORTTEX/02_Lupion/240515/LiDAR/datos/lidars/terra_las/cloud.las")
+# 
+# las <- clip_roi(raw_las, aoi)
+# writeLAS(las, "raw_data/lidar/lupion_clip.las")
+```
+
+```{r}
+las_raw <- lidR::readLAS("raw_data/lidar/lupion_clip.las")
+```
+
+#### Remove Noise 
+
+- The function classify_noise() classifies the noise points as LASNOISE. For each point in the point cloud, the average distance to the k-nearest neighbors is computed. Points whose distance is greater than the average distance + a multiplier of the sd are considered noise.
+- Then filter out the noise points and duplicates. 
+
+```{r noise}
+las <- classify_noise(las_raw, sor(k = 15, m = 2))
+# sor means Statitical Outliers Removal
+
+# Filter out noise 
+las_denoise <- filter_poi(las, Classification != LASNOISE)
+
+# Duplicates remove
+las_clean <- filter_duplicates(las_denoise)
+
+```
+
+#### Generate crown
+
+```{r}
+names_olives <- unique(tree$COD)
+
+radius_clip <- 7 
+
+for (i in names_olives) {
+  
+  # filter tree
+  t <- tree |> filter(COD == i)
+
+  # clip las
+  l <- clip_circle(las = las_clean, xcenter = t$x, ycenter = t$y, radius = radius_clip)
+
+  # Normalization
+  nlas <- normalize_height(las = l, algorithm = knnidw())
+
+  # Generate CHM
+  chm <- rasterize_canopy(nlas, res = 0.1, algorithm = dsmtin())
+
+  # Detecting treetops
+  # Function for defining dynamic window size
+  lin <- function(x) {
+    x * 0.05 + 0.6
+  }
+  ttops <- ForestTools::vwf(chm, winFun = lin, minHeight = 1)
+
+  crowns <- ForestTools::mcws(treetops = ttops, CHM = chm, minHeight = .7, format = "polygons")
+
+  name_crow <- paste0("data/crowns/crowns_", i, ".shp")
+
+  st_write(crowns, name_crow, append=FALSE)
+}
+
+```
+
+- Corrected the crowns in QGIS 
+- Import them, dissolve and merge into a shapefile
+- Remove holes < 400 cm^2 (20 x w0 cm) 
+
+#### Read and merge corrected polygons 
+```{r}
+
+files <- list.files("data/crowns/crowns_corrected", pattern = ".shp", full.names = TRUE)
+
+for (i in seq_along(files)) {
+  code_tree <- basename(files[i]) |>
+    str_remove("crowns_") |>
+    str_remove(".shp")
+
+  m <- st_read(files[i]) |>
+    dplyr::select(tree) |>
+    st_union() |>
+    st_as_sf() |>
+    mutate(code_tree = code_tree)
+
+  name_shp <- paste0("data/crowns/crowns_dissolve/crowns_dissolve_", code_tree, ".shp")
+
+  st_write(m, name_shp, append = FALSE)
+}
+
+
+files_dissolve <- list.files("data/crowns/crowns_dissolve", pattern = ".shp", full.names = TRUE)
+
+tree_crowns <- files_dissolve |>
+  map(st_read) |>
+  bind_rows()
+
+st_write(tree_crowns, "data/crowns/tree_crowns.shp", append = FALSE)
+
+
+
+# Remove holes
+tree_crowns_nohole <- smoothr::fill_holes(tree_crowns, threshold = units::set_units(400, cm^2))
+
+
+st_write(tree_crowns_nohole, "data/crowns/tree_crowns_nohole.shp", append = FALSE)
+```
+
+
+
+ 
+
