@@ -1,0 +1,86 @@
+---
+title: "Prepare layer of tree positions (geo_tree)"
+format: html
+---
+
+## Aim
+
+Generate a shapefile with all the trees in the study area, including the control and Verticillium points. For each tree, we will include the treatment, the block, and the tree code. The trees marked as "R" correspond with "Rojo" treatment and "V" with "Verde" treatment. The trees marked as "VT" correspond with Verticillium trees, and the trees marked as "C" correspond with control trees.
+
+There are three blocks in the study area. The trees of the "rojo" and "verde" treatment are distributed in the blocks as follows: trees 1 to 6 in the block 1, trees 7 to 12 in the block 2, and trees 13 to 18 in the block 3.
+
+## Generate a shapefile with all the trees in the study area 
+
+### Control and Verticillium points 
+
+- We marked recorded GPS coordinates of several trees with ***Verticillium*** (n=6) 
+- As **control**, we selected 30 trees randomly distributed across study area. To achieve this, we generated 30 random points within the study area polygon using `QGIS` (`Vector/Research Tools/Random points in polygon`). Each point was placed at least 5 m apart from the others. 
+- Next, we visually adjusted the location of these points to match the nearest tree
+
+```{r}
+#| message: false
+library(tidyverse)
+library(sf)
+```
+
+```{r}
+control <- st_read("raw_data/geoinfo/control_points.shp", quiet = TRUE) |>
+  st_transform(32630) |>
+  mutate(
+    code_tree = paste0("C", str_pad(rand_point, width = 2, pad = "0")),
+    treatment = "control"
+  ) |> 
+dplyr::select(-rand_point)
+
+verti <- st_read("raw_data/geoinfo/verticilium.shp", quiet = TRUE) |> 
+st_transform(32630) |> 
+dplyr::select(id = `PT.Nom`) |> 
+mutate(
+    code_tree = paste0("VT", str_pad(id, width = 2, pad = "0")),
+    treatment = "verticillum"
+  ) |> 
+dplyr::select(-id)
+
+vc <- bind_rows(control, verti) |> mutate(block = NA)
+```
+
+
+### Inoculated trees
+
+```{r}
+aux_tree <- st_read("raw_data/geoinfo/individuos_25830.shp", quiet = TRUE) |>
+  st_transform(32630) |>
+  dplyr::select(id = COD) |>
+  mutate(
+    treatment = case_when(
+      str_detect(id, "V") ~ "verde",
+      str_detect(id, "R") ~ "rojo"
+    ),
+    tree = as.numeric(str_remove_all(id, "[A-Za-z]"))
+  ) |>
+  mutate(block = case_when(
+    tree %in% 1:6 ~ "B1",
+    tree %in% 7:12 ~ "B2",
+    tree %in% 13:18 ~ "B3"
+  )) |>
+  mutate(
+    code_tree = case_when(
+      str_detect(id, "V") ~ paste0("V", str_pad(tree, width = 2, pad = "0")),
+      str_detect(id, "R") ~ paste0("R", str_pad(tree, width = 2, pad = "0"))
+    )
+  ) |>
+  dplyr::select(code_tree, treatment, block)
+```
+ 
+
+```{r}
+geo_trees <- bind_rows(aux_tree, vc)
+
+st_write(geo_trees, "data/geo_trees.shp", append = FALSE, quiet = TRUE)
+```
+
+
+
+
+
+ 
