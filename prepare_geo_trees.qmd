@@ -14,7 +14,7 @@ There are three blocks in the study area. The trees of the "rojo" and "verde" tr
 ### Control and Verticillium points 
 
 - We marked recorded GPS coordinates of several trees with ***Verticillium*** (n=6) 
-- As **control**, we selected 30 trees randomly distributed across study area. To achieve this, we generated 30 random points within the study area polygon using `QGIS` (`Vector/Research Tools/Random points in polygon`). Each point was placed at least 5 m apart from the others. 
+- As **control**, we selected 25 trees randomly distributed across study area. To achieve this, we generated 25random points within the study area polygon using `QGIS` (`Vector/Research Tools/Random points in polygon`). Each point was placed at least 5 m apart from the others. 
 - Next, we visually adjusted the location of these points to match the nearest tree
 
 ```{r}
