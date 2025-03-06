@@ -4,3 +4,4 @@
 .Ruserdata
 raw_data/lidar/
 raw_data/reflectances/
+data/extracted_reflectances.rds
