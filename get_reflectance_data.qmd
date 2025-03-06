@@ -1,0 +1,140 @@
+---
+title: "get_reflectance_data"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+# Get reflectance data 
+
+```{r ls-tiff}
+#| eval: FALSE 
+
+# hay un problema con el Disco Duro y tengo que leer las rutas usando bash 
+bash_command2404 <- 'find /Volumes/VORTTEX/02_Lupion/240409/MULTI/vuelo-37m/index/reflectance/ -maxdepth 1 -name "*.tif" > "/Users/ajpelu/Google Drive/My Drive/_proyectos/lupion/lupion_verticillum/raw_data/ls_tif_240409.txt"'
+
+bash_command2405 <- 'find /Volumes/VORTTEX/02_Lupion/240515/MULTI/vuelo-37m/index/reflectance/  -maxdepth 1 -name "*.tif" > "/Users/ajpelu/Google Drive/My Drive/_proyectos/lupion/lupion_verticillum/raw_data/ls_tif_240515.txt"'
+
+bash_command2410 <- 'find /Volumes/VORTTEX/02_Lupion/241023/MULTI/vuelo_37m/index/index/reflectance/  -maxdepth 1 -name "*.tif" > "/Users/ajpelu/Google Drive/My Drive/_proyectos/lupion/lupion_verticillum/raw_data/ls_tif_241023.txt"'
+
+
+# Ejecuta el comando desde R
+system(bash_command2404)
+system(bash_command2405)
+system(bash_command2410)
+```
+
+
+```{r}
+library(sf)
+library(terra)
+library(tidyverse)
+
+tree <- st_read("data/crowns/tree_crowns_nohole.shp")
+```
+
+
+```{r crop-reflectances}
+#| eval: FALSE
+
+f2404 <- readLines(con = "raw_data/ls_tif_240409.txt")
+
+ref2404 <- terra::rast(f2404) 
+# Rename bands 
+names(ref2404) <- str_remove_all(names(ref2404), "240409_olivar_2_transparent_reflectance_")
+
+names(ref2404) <- recode(names(ref2404), 
+                       "blue-444" = "b444", 
+                       "blue" = "b",
+                       "green-531" = "g531",
+                       "green" = "g",
+                       "nir" = "nir",
+                       "red edge-705" = "re705",
+                       "red edge-740" = "re740", 
+                       "red edge" = "re",
+                       "red-650" = "r650",
+                       "red" = "r")
+
+
+# Generate stack mask and crop 
+ref2404_crop <- terra::mask(crop(ref2404, tree), tree)
+terra::writeRaster(ref2404_crop, "raw_data/reflectances/ref2404_crop.tiff")
+
+f2405 <- readLines(con = "raw_data/ls_tif_240515.txt")
+
+ref2405 <- terra::rast(f2405) 
+# Rename bands 
+names(ref2405) <- str_remove_all(names(ref2405), "240515_Lupion_transparent_reflectance_")
+
+names(ref2405) <- recode(names(ref2405), 
+                       "blue-444" = "b444", 
+                       "blue" = "b",
+                       "green-531" = "g531",
+                       "green" = "g",
+                       "nir" = "nir",
+                       "red edge-705" = "re705",
+                       "red edge-740" = "re740", 
+                       "red edge" = "re",
+                       "red-650" = "r650",
+                       "red" = "r")
+
+# Generate stack mask and crop 
+ref2405_crop <- terra::mask(crop(ref2405, tree), tree)
+terra::writeRaster(ref2405_crop, "raw_data/reflectances/ref2405_crop.tiff")
+rm(ref2405_crop)
+
+f2410 <- readLines(con = "raw_data/ls_tif_241023.txt")
+
+ref2410 <- terra::rast(f2410) 
+# Rename bands 
+names(ref2410) <- str_remove_all(names(ref2410), "241023_lupion_multi_transparent_reflectance_")
+
+names(ref2410) <- recode(names(ref2410), 
+                       "blue-444" = "b444", 
+                       "blue" = "b",
+                       "green-531" = "g531",
+                       "green" = "g",
+                       "nir" = "nir",
+                       "red edge-705" = "re705",
+                       "red edge-740" = "re740", 
+                       "red edge" = "re",
+                       "red-650" = "r650",
+                       "red" = "r")
+
+
+# Generate stack mask and crop 
+ref2410_crop <- terra::mask(crop(ref2410, tree), tree)
+terra::writeRaster(ref2410_crop, "raw_data/reflectances/ref2410_crop.tiff")
+rm(ref2410_crop)
+```
+
+
+
+```{r extract-reflectances}
+#| eval: FALSE
+
+l <- list.files("raw_data/reflectances/", full.names = TRUE)
+
+custom_extract <- function(p) {
+  r <- terra::rast(p)
+  x <- terra::extract(r, tree, df = TRUE)
+  x$code_tree <- tree$code_tree[x$ID]
+
+  d <- basename(p) |>
+    str_remove("ref") |>
+    str_remove("_crop.tiff")
+
+  out <- x |> mutate(date = d)
+  return(out)
+}
+
+
+g <- l |> map(custom_extract) |> bind_rows() 
+
+saveRDS(g, "data/extracted_reflectances.rds")
+```
+
+
+
+
+
