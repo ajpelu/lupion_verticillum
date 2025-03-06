@@ -18,7 +18,7 @@ library(smoothr) # to remove holes
 - Get an Area of Interest (AOI) as the extent of the localion of selected trees (buffered by 30 m). I used convex_hull and then buffered it by 15 m. 
 
 ```{r aoi}
-tree <- st_read("raw_data/geoinfo/individuos_25830.shp") |> st_transform(32630) |> 
+tree <- st_read("data/geo_trees.shp", quiet=TRUE) |> st_transform(32630) |> 
     mutate(x = st_coordinates(geometry)[,1],
          y = st_coordinates(geometry)[,2]) 
 
@@ -38,7 +38,6 @@ aoi <- tree |> generaaoi()
 ```{r clip-lidar}
 #| eval: false
 # raw_las <- lidR::readLAS("/Volumes/VORTTEX/02_Lupion/240515/LiDAR/datos/lidars/terra_las/cloud.las")
-# 
 # las <- clip_roi(raw_las, aoi)
 # writeLAS(las, "raw_data/lidar/lupion_clip.las")
 ```
@@ -67,14 +66,14 @@ las_clean <- filter_duplicates(las_denoise)
 #### Generate crown
 
 ```{r}
-names_olives <- unique(tree$COD)
+names_olives <- unique(tree$code_tree)
 
 radius_clip <- 7 
 
 for (i in names_olives) {
   
   # filter tree
-  t <- tree |> filter(COD == i)
+  t <- tree |> filter(code_tree == i)
 
   # clip las
   l <- clip_circle(las = las_clean, xcenter = t$x, ycenter = t$y, radius = radius_clip)
@@ -110,13 +109,13 @@ for (i in names_olives) {
 
 files <- list.files("data/crowns/crowns_corrected", pattern = ".shp", full.names = TRUE)
 
+
 for (i in seq_along(files)) {
   code_tree <- basename(files[i]) |>
     str_remove("crowns_") |>
     str_remove(".shp")
 
   m <- st_read(files[i]) |>
-    dplyr::select(tree) |>
     st_union() |>
     st_as_sf() |>
     mutate(code_tree = code_tree)
@@ -134,7 +133,6 @@ tree_crowns <- files_dissolve |>
   bind_rows()
 
 st_write(tree_crowns, "data/crowns/tree_crowns.shp", append = FALSE)
-
 
 
 # Remove holes
