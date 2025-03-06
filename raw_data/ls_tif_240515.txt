@@ -1,0 +1,10 @@
+/Volumes/VORTTEX/02_Lupion/240515/MULTI/vuelo-37m/index/reflectance//240515_Lupion_transparent_reflectance_blue-444.tif
+/Volumes/VORTTEX/02_Lupion/240515/MULTI/vuelo-37m/index/reflectance//240515_Lupion_transparent_reflectance_blue.tif
+/Volumes/VORTTEX/02_Lupion/240515/MULTI/vuelo-37m/index/reflectance//240515_Lupion_transparent_reflectance_green-531.tif
+/Volumes/VORTTEX/02_Lupion/240515/MULTI/vuelo-37m/index/reflectance//240515_Lupion_transparent_reflectance_green.tif
+/Volumes/VORTTEX/02_Lupion/240515/MULTI/vuelo-37m/index/reflectance//240515_Lupion_transparent_reflectance_nir.tif
+/Volumes/VORTTEX/02_Lupion/240515/MULTI/vuelo-37m/index/reflectance//240515_Lupion_transparent_reflectance_red edge-705.tif
+/Volumes/VORTTEX/02_Lupion/240515/MULTI/vuelo-37m/index/reflectance//240515_Lupion_transparent_reflectance_red edge-740.tif
+/Volumes/VORTTEX/02_Lupion/240515/MULTI/vuelo-37m/index/reflectance//240515_Lupion_transparent_reflectance_red edge.tif
+/Volumes/VORTTEX/02_Lupion/240515/MULTI/vuelo-37m/index/reflectance//240515_Lupion_transparent_reflectance_red-650.tif
+/Volumes/VORTTEX/02_Lupion/240515/MULTI/vuelo-37m/index/reflectance//240515_Lupion_transparent_reflectance_red.tif
