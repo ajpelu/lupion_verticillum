@@ -1,0 +1,402 @@
+---
+title: "compute spectral indices"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+## List of Spectral Indices 
+
+```{r}
+library(tidyverse, quietly = TRUE, warn.conflicts = FALSE)
+library(terra)
+library(here)
+library(future)
+```
+
+```{r}
+raw_indices <- readxl::read_excel("raw_data/spectral_dic.xlsx", sheet = "spectral_indices")
+
+bands <- readxl::read_excel("raw_data/spectral_dic.xlsx", sheet = "bands_dict")
+
+which_bands <- str_extract_all(raw_indices$formula, "p\\d+") |> 
+  unlist() |> 
+  unique() |> 
+  sort()
+  
+bands_correspondence <- c(
+  "p440" = "b444", 
+  "p450" = "b444", 
+  "p490" = "b",
+  "p531" = "g531", 
+  "p550" = "g", 
+  "p570" = "g",
+  "p650" = "r650", 
+  "p670" = "r", 
+  "p675" = "r",
+  "p700" = "re705", 
+  "p710" = "re705", 
+  "p720" = "re",
+  "p740" = "re740", 
+  "p750" = "re740", 
+  "p800" = "nir"
+)
+
+
+indices <- raw_indices |> 
+  mutate(f = str_replace_all(formula, bands_correspondence))
+# Ojo usamos un diccionario en vez de pattern and replacement. Es mas eficiente
+
+```
+
+
+
+
+```{r}
+index_functions <- list(
+ ndvi = function(nir, r) (nir - r) / (nir + r),
+ rdvi = function(nir, r) (nir - r) / sqrt((nir + r)),
+ osavi = function(nir, r) ((1 + 0.16)*(nir - r) / (nir + r + 0.16)),
+ sr = function(nir, r) ((nir / r)),
+ msr = function(nir, r) ((nir / r) - 1) / (sqrt((nir - r)) + 1),
+ pssra = function(nir, r) (nir / r),
+ pssrb = function(nir, r650) (nir / r650),
+ mtrivi = function(nir, r, g) (1.2 * (1.2*(nir - g) - 2.5*(r - g))),
+ trivi = function(re740, r, g) (0.5 * (120*(re740 - g) - 200*(r - g))),
+ pri = function(g531, g) ((g - g531)/(g + g531)),
+ zm = function(re740, re705) (re740/re705),
+ vog = function(re740, re) (re740/re),
+ tcari = function(re705, g, r) (3*( (re705 - r) - 0.2 * (re705 - g)*(re705/r) )),
+ redness = function(re705, r) (re705/r), 
+ greenness = function(g, r) (g/r),
+ bluei = function(b, b444) (b444/b),
+ bg2 = function(g, b444) (b444/g),
+ lic3 = function(re740, b444) (b444 / re740)
+)
+
+
+# Define indices and their required bands
+index_definitions <- list(
+  ndvi       = c("nir", "r"),
+  rdvi       = c("nir", "r"),
+  osavi      = c("nir", "r"),
+  sr         = c("nir", "r"),
+  msr        = c("nir", "r"),
+  pssra      = c("nir", "r"),
+  mtrivi     = c("nir", "r", "g"),
+  trivi      = c("re740", "r", "g"),
+  pri        = c("g531", "g"),
+  zm         = c("re740", "re705"),
+  vog        = c("re740", "re"),
+  pssrb      = c("nir", "r650"),
+  tcari      = c("re705", "g", "r"),
+  redness    = c("re705", "r"),
+  greenness  = c("g", "r"),
+  bluei      = c("b", "b444"),
+  bg2        = c("g", "b444"),
+  lic3       = c("re740", "b444")
+)
+
+# Get list of raster files
+ref <- list.files("raw_data/reflectances", pattern = "*.tiff", full.names = TRUE)
+
+# Function to process a single raster file
+process_raster_file <- function(file_path) {
+  
+  # Read raster
+  r <- terra::rast(file_path)
+  
+  # Extract sampling date
+  sampling_date <- str_remove(basename(file_path), "_crop.tiff") |> str_remove("ref")
+
+  # Iterate over all index definitions
+  for (index_name in names(index_definitions)) {
+    
+    # Get the required bands for the current index
+    band_names <- index_definitions[[index_name]]
+
+    # Check if all bands exist in raster
+    if (all(band_names %in% names(r))) {
+      
+      # Extract necessary bands
+      rx <- r[[band_names]]
+
+      # Get the corresponding function from index_functions
+      index_function <- index_functions[[index_name]]
+
+      # Apply function dynamically
+      out <- terra::lapp(rx, index_function, usenames = TRUE, cores = 3)
+
+      # Construct output filename
+      out_filename <- paste0(index_name, "_", sampling_date, ".tiff")
+
+      # Save output raster
+      terra::writeRaster(out, filename = here::here("data/indices", out_filename), overwrite = TRUE)
+    }
+  }
+}
+
+# Run in parallel safely
+system.time({
+  future_lapply(ref, process_raster_file)
+})
+
+```
+
+
+```{r}
+#| eval: false
+# Functions 
+
+### NIR & R 
+
+ndvi <- function(nir, r) { 
+  (nir - r) / (nir + r)
+}
+
+rdvi <- function(nir, r) {
+  (nir - r) / sqrt((nir + r))
+}
+
+osavi <- function(nir, r) {
+  (1 + 0.16)*((nir - r) / (nir + r + 0.16))
+  }
+
+sr <- function(nir, r) {
+  nir/r
+}
+
+msr <- function(nir, r) {
+  ((nir / r) - 1) / (sqrt((nir - r)) + 1)
+}
+
+pssra <- function(nir, r) { 
+  nir / r
+}
+
+
+
+# NIR & R & G 
+mtrivi <- function(nir, g, r) {
+  1.2 * (1.2*(nir - g) - 2.5*(r - g))
+}
+
+
+trivi <- function(re740, g, r) {
+  0.5 * (120*(re740 - g) - 200*(r - g))
+}
+
+pri <- function(g, g531) {
+  (g - g531)/(g + g531)
+}
+
+zm <- function(re740, re705) {
+  re740/re705
+}
+  
+vog <- function(re740, re) {
+  re740/re705
+}
+  
+
+
+pssrb <- function(nir, r650) { 
+  nir / r650
+}
+
+tcari <- function(re705, g, r) {
+  3*((re705 - r) - 0.2 * (re705 - g)*(re705/r))
+}
+
+tcari_osavi <- function(re705, g, r, nir) { 
+  (3*((re705 - r) - 0.2 * (re705 - g)*(re705/r))) / (1 + 0.16)*((nir - r) / (nir + r + 0.16))
+}
+
+redness <- function(re705, r) {
+  re740/re705
+} 
+
+greenness <- function(g,r) {
+  g/r
+}
+
+bluei <- function(b444,b) {
+  b444/b
+}
+
+## B44 & G 
+bg2 <- function(b444,g) {
+  b444/g
+}
+
+lic3 <- function(b444,r740) {
+  b444/re740
+}
+
+
+
+
+
+ref <- list.files("raw_data/reflectances", pattern = "*.tiff", full.names = TRUE)
+
+system.time(
+
+for (i in seq_along(ref)){ 
+  
+  # read raster
+  r <- terra::rast(ref[i]) 
+  
+  # get sampling date 
+  sampling_date <- str_remove(basename(ref[i]), "_crop.tiff") |> str_remove("ref")
+  
+  
+
+  # NIR & R 
+  rx <- r[[c("nir", "r")]]
+  formulas <- c("ndvi", "rdvi", "osavi", "sr", "msr", "pssra")
+
+  for (f in seq_along(formulas)) { 
+    out <- terra::lapp(rx, get(formulas[f]), usenames=TRUE, cores = 3) 
+    out_filename <- paste0(paste(formulas[f], sampling_date, sep = "_"), ".tiff")
+    terra::writeRaster(out, filename = here::here("data/indices", out_filename), overwrite = TRUE)
+  }
+  
+  
+  # NIR & R & G 
+  rx <- r[[c("nir", "r", "g")]]
+  formulas <- c("mtrivi")
+
+  for (f in seq_along(formulas)) { 
+    out <- terra::lapp(rx, get(formulas[f]), usenames=TRUE, cores = 3) 
+    out_filename <- paste0(paste(formulas[f], sampling_date, sep = "_"), ".tiff")
+    terra::writeRaster(out, filename = here::here("data/indices", out_filename), overwrite = TRUE)
+  }
+  
+  # RE740 & R & G 
+  rx <- r[[c("re740", "r", "g")]]
+  formulas <- c("trivi")
+
+  for (f in seq_along(formulas)) { 
+    out <- terra::lapp(rx, get(formulas[f]), usenames=TRUE, cores = 3) 
+    out_filename <- paste0(paste(formulas[f], sampling_date, sep = "_"), ".tiff")
+    terra::writeRaster(out, filename = here::here("data/indices", out_filename), overwrite = TRUE)
+  }
+  
+  # G531 & G 
+  rx <- r[[c("g531", "g")]]
+  formulas <- c("pri")
+
+  for (f in seq_along(formulas)) { 
+    out <- terra::lapp(rx, get(formulas[f]), usenames=TRUE, cores = 3) 
+    out_filename <- paste0(paste(formulas[f], sampling_date, sep = "_"), ".tiff")
+    terra::writeRaster(out, filename = here::here("data/indices", out_filename), overwrite = TRUE)
+  }
+  
+  # re740, re705
+  rx <- r[[c("re740", "re705")]]
+  formulas <- c("zm")
+
+  for (f in seq_along(formulas)) { 
+    out <- terra::lapp(rx, get(formulas[f]), usenames=TRUE, cores = 3) 
+    out_filename <- paste0(paste(formulas[f], sampling_date, sep = "_"), ".tiff")
+    terra::writeRaster(out, filename = here::here("data/indices", out_filename), overwrite = TRUE)
+  }
+  
+  # re740, re
+  rx <- r[[c("re740", "re")]]
+  formulas <- c("vog")
+
+  for (f in seq_along(formulas)) { 
+    out <- terra::lapp(rx, get(formulas[f]), usenames=TRUE, cores = 3) 
+    out_filename <- paste0(paste(formulas[f], sampling_date, sep = "_"), ".tiff")
+    terra::writeRaster(out, filename = here::here("data/indices", out_filename), overwrite = TRUE)
+  }
+  
+  # nir, r650
+  rx <- r[[c("nir", "r650")]]
+  formulas <- c("pssrb")
+
+  for (f in seq_along(formulas)) { 
+    out <- terra::lapp(rx, get(formulas[f]), usenames=TRUE, cores = 3) 
+    out_filename <- paste0(paste(formulas[f], sampling_date, sep = "_"), ".tiff")
+    terra::writeRaster(out, filename = here::here("data/indices", out_filename), overwrite = TRUE)
+  }
+  
+  # re705, g, r
+  rx <- r[[c("re705", "g", "r")]]
+  formulas <- c("tcari")
+
+  for (f in seq_along(formulas)) { 
+    out <- terra::lapp(rx, get(formulas[f]), usenames=TRUE, cores = 3) 
+    out_filename <- paste0(paste(formulas[f], sampling_date, sep = "_"), ".tiff")
+    terra::writeRaster(out, filename = here::here("data/indices", out_filename), overwrite = TRUE)
+  }
+  
+  # re705, g, r, nir
+  rx <- r[[c("re705", "g", "r", "nir")]]
+  formulas <- c("tcari_osavi")
+
+  for (f in seq_along(formulas)) { 
+    out <- terra::lapp(rx, get(formulas[f]), usenames=TRUE, cores = 3) 
+    out_filename <- paste0(paste(formulas[f], sampling_date, sep = "_"), ".tiff")
+    terra::writeRaster(out, filename = here::here("data/indices", out_filename), overwrite = TRUE)
+  }
+  
+  # re705, r 
+  rx <- r[[c("re705", "r")]]
+  formulas <- c("redness")
+
+  for (f in seq_along(formulas)) { 
+    out <- terra::lapp(rx, get(formulas[f]), usenames=TRUE, cores = 3) 
+    out_filename <- paste0(paste(formulas[f], sampling_date, sep = "_"), ".tiff")
+    terra::writeRaster(out, filename = here::here("data/indices", out_filename), overwrite = TRUE)
+  }
+  
+    # g, r 
+  rx <- r[[c("g", "r")]]
+  formulas <- c("greenness")
+
+  for (f in seq_along(formulas)) { 
+    out <- terra::lapp(rx, get(formulas[f]), usenames=TRUE, cores = 3) 
+    out_filename <- paste0(paste(formulas[f], sampling_date, sep = "_"), ".tiff")
+    terra::writeRaster(out, filename = here::here("data/indices", out_filename), overwrite = TRUE)
+  }
+  
+  # b444,b 
+  rx <- r[[c("b", "b444")]]
+  formulas <- c("bluei")
+
+  for (f in seq_along(formulas)) { 
+    out <- terra::lapp(rx, get(formulas[f]), usenames=TRUE, cores = 3) 
+    out_filename <- paste0(paste(formulas[f], sampling_date, sep = "_"), ".tiff")
+    terra::writeRaster(out, filename = here::here("data/indices", out_filename), overwrite = TRUE)
+  }
+  
+  # b444,g 
+  rx <- r[[c("g", "b444")]]
+  formulas <- c("bg2")
+
+  for (f in seq_along(formulas)) { 
+    out <- terra::lapp(rx, get(formulas[f]), usenames=TRUE, cores = 3) 
+    out_filename <- paste0(paste(formulas[f], sampling_date, sep = "_"), ".tiff")
+    terra::writeRaster(out, filename = here::here("data/indices", out_filename), overwrite = TRUE)
+  }
+  
+  # b444,g 
+  rx <- r[[c("re740", "b444")]]
+  formulas <- c("lic3")
+
+  for (f in seq_along(formulas)) { 
+    out <- terra::lapp(rx, get(formulas[f]), usenames=TRUE, cores = 3) 
+    out_filename <- paste0(paste(formulas[f], sampling_date, sep = "_"), ".tiff")
+    terra::writeRaster(out, filename = here::here("data/indices", out_filename), overwrite = TRUE)
+  }
+
+}
+)
+
+
+```
+
+
+
